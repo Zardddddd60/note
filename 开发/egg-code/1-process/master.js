@@ -22,7 +22,17 @@ class Master {
         this.addListeners();
     }
 
-    forkApp(count = 2) {
+    forkApp(count = 2, worker = null) {
+        if (worker) {
+            console.log(`worker ${worker.process.pid} exit...`);
+            this.startSuccess --;
+            // const lastWorker = this.appWorkers.get(worker.process.pid);
+            this.appWorkers.delete(worker.process.pid);
+            if (this.agent.status === 'closed') {
+                console.log('不再fork新的进程了');
+                return ;
+            }
+        }
         console.log(`开始fork${count}个app进程`);
         for (let i = 0; i < count; i++) {
             cluster.settings = {
@@ -33,8 +43,8 @@ class Master {
         }
 
         cluster.on('fork', worker => {
-            this.appWorkers = this.appWorkers || [];
-            this.appWorkers.push(worker);
+            this.appWorkers = this.appWorkers || new Map();
+            this.appWorkers.set(worker.process.pid, worker);
             worker.on('message', ({ action }) => {
                 if (action === 'app-start') {
                     this.startSuccess = this.startSuccess || 0;
@@ -45,6 +55,10 @@ class Master {
                         this.eggReady();
                     }
                 }
+            });
+            worker.on('exit', () => {
+                // 就假设当agent
+                this.forkApp(1, worker);
             });
         });
     }
