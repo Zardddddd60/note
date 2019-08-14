@@ -11,7 +11,7 @@ class Master {
         this.agent = fork(path.join(__dirname, './agent-entry.js'));
         // 添加对agent进程exit事件的监听
         this.agent.once('exit', () => {
-            this.agent.status !== 'closed' && this.forkAgent() && console.log('fork a new agent...');
+            this.status !== 'closed' && this.forkAgent() && console.log('fork a new agent...');
         });
         this.agent.on('message', ({ action }) => {
             if (action === 'agent-start') {
@@ -28,8 +28,14 @@ class Master {
             this.startSuccess --;
             // const lastWorker = this.appWorkers.get(worker.process.pid);
             this.appWorkers.delete(worker.process.pid);
-            if (this.agent.status === 'closed') {
+            if (this.status === 'closed') {
+                this.workClosedCount = this.workClosedCount || 1;
+                this.workClosedCount ++;
                 console.log('不再fork新的进程了');
+                if (this.agentClosed && this.workClosedCount === 2) {
+                    console.log('app后退出，退出master');
+                    process.exit(0);
+                }
                 return ;
             }
         }
@@ -57,7 +63,6 @@ class Master {
                 }
             });
             worker.on('exit', () => {
-                // 就假设当agent
                 this.forkApp(1, worker);
             });
         });
@@ -75,9 +80,14 @@ class Master {
 
     handleSignal() {
         // 做标记，防止无限重启；
-        this.agent.status = 'closed';
+        this.status = 'closed';
+        
         this.agent.once('exit', () => {
-            process.exit(0);
+            this.agentClosed = true;
+            if (this.workClosedCount === 2) {
+                console.log('agent后退出，退出master')
+                process.exit(0);
+            }
         });
     }
 }
